@@ -1,0 +1,1066 @@
+---
+title: "VVIQ_Validity_Analysis"
+author: "Mohammad_Atashrooz"
+date: "2025-10-17"
+output: html_document
+---
+
+0. Loading Packages
+
+```{r Packages} 
+library(writexl); library(readxl)
+
+library(dplyr); library(tidyverse); library(tidyr)
+
+library(psych); library(mgcv)
+
+library(lavaan); library(semTools); library(semPower); library(lavaan.mi)
+
+library(ggplot2); library(viridis); library(lavaanPlot)
+library(patchwork);library(ggpubr) ; library(rsvg)
+
+library(car); library(effectsize); library(emmeans)
+library(stringr); library(gt)
+```
+1. Preprocessing the dataset
+
+ 
+```{r Preprocessing}
+
+# clean working environment
+rm(list = ls())
+
+
+# Get  working directory
+getwd()
+# Set working directory
+setwd()
+
+
+data <- read_xlsx("my_data.xlsx")
+
+
+#---------------- Convert some columns to numeric-------------
+data <- data %>% mutate(id = as.numeric(id), age = as.numeric(age))
+data$gender <- factor(data$gender, levels = c(1, 2), labels = c("male", "female"))
+data$marital_status <- factor(data$marital_status, levels = c(1,2), labels = c("single","married"))
+data <- data %>% select(id, age, gender,
+vviq1, vviq2, vviq3, vviq4, 
+vviq5, vviq6, vviq7, vviq8,
+vviq9, vviq10, vviq11, vviq12,
+vviq13, vviq14, vviq15, vviq16,
+vviq17, vviq18, vviq19, vviq20,
+vviq21, vviq22, vviq23, vviq24,
+vviq25, vviq26, vviq27, vviq28,
+vviq29, vviq30, vviq31, vviq32,
+                        
+vmiq1,vmiq2,vmiq3,vmiq4,vmiq5,vmiq6,                        vmiq7,vmiq8,vmiq9,vmiq10,vmiq11,vmiq12,
+vmiq13,vmiq14,vmiq15, vmiq16,vmiq17,vmiq18,                        vmiq19,vmiq20,vmiq21,vmiq22,vmiq23,vmiq24,                        vmiq25,vmiq26,vmiq27,vmiq28,vmiq29,vmiq30,                        vmiq31,vmiq32,vmiq33,vmiq34,vmiq35,vmiq36,
+
+suis1,suis2,suis3,suis4,suis5,suis6,                        suis7,suis8,suis9,suis10,suis11,suis12,
+
+gad1,gad2,gad3,gad4,gad5,gad6,gad7,
+
+tipi1,tipi2,tipi3,tipi4,tipi5,
+tipi6,tipi7,tipi8,tipi9,tipi10
+)
+
+#----------------defining variable coloumns in data file-----------------
+
+vviq_cols  <- grep("vviq",  names(data), ignore.case = TRUE, value = TRUE)
+vmiq_cols  <- grep("vmiq",  names(data), ignore.case = TRUE, value = TRUE)
+suis_cols  <- grep("suis",  names(data), ignore.case = TRUE, value = TRUE)
+gad_cols   <- grep("gad",   names(data), ignore.case = TRUE, value = TRUE)
+tipi_cols  <- grep("tipi",  names(data), ignore.case = TRUE, value = TRUE)
+
+# ----------------- Computing variable Scores -------------------
+
+score_data <- data %>%
+  mutate(
+    VVIQ_score = rowSums(select(., all_of(vviq_cols)), na.rm = TRUE),
+    VMIQ_score = rowSums(select(., all_of(vmiq_cols)), na.rm = TRUE),
+    SUIS_score = rowSums(select(., all_of(suis_cols)), na.rm = TRUE),
+    GAD_score  = rowSums(select(., all_of(gad_cols)),  na.rm = TRUE),
+    
+    VMIQ_External    = rowSums(across(vmiq1:vmiq12),  na.rm = TRUE),
+    VMIQ_Internal    = rowSums(across(vmiq13:vmiq24), na.rm = TRUE),
+    VMIQ_Kinesthetic = rowSums(across(vmiq25:vmiq36), na.rm = TRUE),
+    
+    
+    TIPI_Extraversion     = (.[[tipi_cols[1]]] + (8 - .[[tipi_cols[6]]])) / 2,
+    TIPI_Agreeableness    = ((8 - .[[tipi_cols[2]]]) + .[[tipi_cols[7]]]) / 2,
+    TIPI_Conscientiousness= (.[[tipi_cols[3]]] + (8 - .[[tipi_cols[8]]])) / 2,
+    TIPI_EmotionalStability = ((8 - .[[tipi_cols[4]]]) + .[[tipi_cols[9]]]) / 2,
+    TIPI_Openness         = (.[[tipi_cols[5]]] + (8 - .[[tipi_cols[10]]])) / 2
+  ) %>%
+  select(id,age, VVIQ_score, VMIQ_score,SUIS_score,
+         GAD_score, starts_with("TIPI_"),
+         VMIQ_External, VMIQ_Internal, VMIQ_Kinesthetic)
+
+```
+2. Internal Consistency of the tools (Except for VVIQ)
+
+
+``` {r Internal consistency}
+
+vmiq_mat_external <- data |> select(vmiq_cols[1:12])
+vmiq_mat_internal <- data |> select(vmiq_cols[13:24])
+vmiq_mat_kinesthetic <- data |> select(vmiq_cols[25:36])
+vmiq_mat_total <- data |> select(all_of(vmiq_cols))
+
+suis_mat <- data |> select(all_of(suis_cols))
+
+gad_mat <- data |> select(all_of(gad_cols))
+
+# VMIQ Alpha
+
+alpha_vmiq_external  <- alpha(vmiq_mat_external)
+alpha_vmiq_internal  <- alpha(vmiq_mat_internal)
+alpha_vmiq_kinesthetic  <- alpha(vmiq_mat_kinesthetic)
+alpha_vmiq_toal  <- alpha(vmiq_mat_total)
+
+
+# VMIQ Omega
+# Omega using polychorics 
+poly_vmiq_external   <- polychoric(vmiq_mat_external)$rho
+omega_vmiq_external  <- omega(vmiq_mat_external, poly = TRUE)
+
+poly_vmiq_internal   <- polychoric(vmiq_mat_internal)$rho
+omega_vmiq_internal  <- omega(vmiq_mat_internal, poly = TRUE)
+
+poly_vmiq_kinesthetic   <- polychoric(vmiq_mat_kinesthetic)$rho
+omega_vmiq_kinesthetic  <- omega(vmiq_mat_kinesthetic, poly = TRUE)
+
+poly_vmiq_total   <- polychoric(vmiq_mat_total)$rho
+omega_vmiq_total  <- omega(vmiq_mat_total, poly = TRUE)
+
+#alpha report
+summary(alpha_vmiq_external)
+summary(alpha_vmiq_internal)
+summary(alpha_vmiq_kinesthetic)
+summary(alpha_vmiq_toal)
+#omega report
+summary(omega_vmiq_external)
+summary(omega_vmiq_internal)
+summary(omega_vmiq_kinesthetic)
+summary(omega_vmiq_total)
+
+
+#--------------- SUIS Internal consistency------------- 
+alpha_suis  <- alpha(suis_mat)
+
+# Omega using polychorics 
+poly_suis   <- polychoric(suis_mat)$rho
+omega_suis  <- omega(suis_mat, poly = TRUE)
+
+# Alpha report
+summary(alpha_suis)
+# Omega reports
+summary(omega_suis)
+
+#--------------- GAD Inernal consistency------------- 
+alpha_gad  <- alpha(gad_mat)
+
+# Omega using polychorics 
+poly_gad   <- polychoric(gad_mat)$rho
+omega_gad  <- omega(gad_mat, poly = TRUE)
+
+# alpha report
+summary(alpha_gad)
+# omega report
+summary(omega_gad)
+
+```
+
+3. Factorial Structure and Fitness
+  3.1. CFA (plain_model)
+  3.2.  CFA (final_model)
+  3.3.  CFA (bifactor_model)
+  
+``` {r Facorial structure}
+
+# ----------- CFA for a one way solution ----------
+
+# Model syntax for plain model
+
+scenes <- split(vviq_cols, rep(1:8, each = 4))
+
+plain_model <- paste0("V =~ ", paste(vviq_cols, collapse = " + "))
+
+# Correlated residuals within each scene
+
+within_covs <- unlist(lapply(scenes, function(b){
+  apply(combn(b, 2), 2, \(p) sprintf("%s ~~ %s", p[1], p[2]))
+}))
+
+resid_syntax <- paste(within_covs, collapse = "\n")
+
+
+# Model syntax for One way solution model with correlated residuals
+
+model_within <- paste(plain_model, resid_syntax, sep = "\n")
+
+# Model Syntax for Bifactor model
+
+bifactor_model <- '
+
+# General Factor (loads on all items)
+G =~ vviq1 + vviq2 + vviq3 + vviq4 + vviq5 + vviq6 + vviq7 + vviq8 + 
+     vviq9 + vviq10 + vviq11 + vviq12 + vviq13 + vviq14 + vviq15 + vviq16 + 
+     vviq17 + vviq18 + vviq19 + vviq20 + vviq21 + vviq22 + vviq23 + vviq24 + 
+     vviq25 + vviq26 + vviq27 + vviq28 + vviq29 + vviq30 + vviq31 + vviq32
+
+# Specific Group Factors (each loads on its 4 scene items)
+S1 =~ vviq1 + vviq2 + vviq3 + vviq4  
+S2 =~ vviq5 + vviq6 + vviq7 + vviq8
+S3 =~ vviq9 + vviq10 + vviq11 + vviq12
+S4 =~ vviq13 + vviq14 + vviq15 + vviq16
+S5 =~ vviq17 + vviq18 + vviq19 + vviq20
+S6 =~ vviq21 + vviq22 + vviq23 + vviq24
+S7 =~ vviq25 + vviq26 + vviq27 + vviq28
+S8 =~ vviq29 + vviq30 + vviq31 + vviq32  # <- FIXED: Changed last term from vviq31 to vviq32
+
+# 1. Constrain all specific factors to be uncorrelated with each other
+S1 ~~ 0*S2 + 0*S3 + 0*S4 + 0*S5 + 0*S6 + 0*S7 + 0*S8
+S2 ~~ 0*S3 + 0*S4 + 0*S5 + 0*S6 + 0*S7 + 0*S8
+S3 ~~ 0*S4 + 0*S5 + 0*S6 + 0*S7 + 0*S8
+S4 ~~ 0*S5 + 0*S6 + 0*S7 + 0*S8
+S5 ~~ 0*S6 + 0*S7 + 0*S8
+S6 ~~ 0*S7 + 0*S8
+S7 ~~ 0*S8
+
+# 2. Constrain the general factor to be uncorrelated with all specific factors
+G ~~ 0*S1 + 0*S2 + 0*S3 + 0*S4 + 0*S5 + 0*S6 + 0*S7 + 0*S8
+
+# 3. Constrain the variances of the specific factors (Helps with model identification)
+S1 ~~ 1*S1
+S2 ~~ 1*S2
+S3 ~~ 1*S3
+S4 ~~ 1*S4
+S5 ~~ 1*S5
+S6 ~~ 1*S6
+S7 ~~ 1*S7
+S8 ~~ 1*S8
+'
+
+# Fitting the models:
+
+fit_plain <- cfa(plain_model, data = data,
+                 ordered = vviq_cols, estimator = "WLSMV",
+                 parameterization = "theta", std.lv = TRUE)
+
+fit_within <- cfa(model_within, data = data,
+                  ordered = vviq_cols, estimator = "WLSMV",
+                  parameterization = "theta", std.lv = TRUE)
+
+fit_bifactor <- cfa(bifactor_model, 
+                    data = data, 
+                    ordered = vviq_cols, 
+                    estimator = "WLSMV",
+                    parameterization = "theta")
+
+
+# Report of models
+# 1. Plain model
+
+fitMeasures(fit_plain,  c("cfi","tli","rmsea","rmsea.ci.lower","rmsea.ci.upper",
+                          "srmr","chisq.scaled","df.scaled","pvalue.scaled",
+                          "baseline.chisq","baseline.df"))
+
+# 2. final one way model
+
+fitMeasures(fit_within, c("cfi","tli","rmsea","rmsea.ci.lower","rmsea.ci.upper",
+                          "srmr","chisq.scaled","df.scaled","pvalue.scaled",
+                          "baseline.chisq","baseline.df"))
+
+# 3. Bifactor model
+
+fitMeasures(fit_bifactor,  c("cfi","tli","rmsea","rmsea.ci.lower","rmsea.ci.upper",
+                             "srmr","chisq.scaled","df.scaled","pvalue.scaled",
+                             "baseline.chisq","baseline.df"))
+
+# Final Model: Core loadings with CI and standardized estimates
+loadings_tbl <- parameterEstimates(fit_within,rsquare = TRUE ,standardized = TRUE, ci = TRUE)
+
+
+# Final Model: R² (communality) per item
+r2_vec <- inspect(fit_within, "r2")
+r2_tbl <- tibble(Item = names(r2_vec), R2 = as.numeric(r2_vec))
+
+
+# Visualization of the final model using lavaangui
+
+final <- 
+  lavaanPlot(fit_within, 
+           stand = TRUE,
+            covs = TRUE,
+           coefs = TRUE,
+           stars = "covs",
+           node_options = list(
+             shape = "box",
+             fontname = "Arial",
+             color    = "black",
+             fontcolor = "darkblue",
+             fontsize = 24,
+             width = 1.4,
+             height = 1.0
+           ),
+           edge_options = list(
+             color = "navy",
+             style = "solid",
+             penwidth = 1,
+             fontcolor = "black",
+             fontsize = 20
+           ),
+           graph_options = list(
+             layout   = "dot",      # layered layout
+             rankdir  = "TB",       # left-to-right flow (cleaner CFAs)
+             overlap  = "false",    # prevent node overlap
+             splines  = "spline"   # curved edges to reduce crossings
+            # nodesep  = "0.15",      # extra space between nodes on same rank
+             #ranksep  = "1.8"
+           ))
+final
+
+
+embed_plot_pdf(final, "plot3.pdf", width = 1500)
+
+
+comp_models <- compareFit(fit_within, fit_plain, fit_bifactor)
+summary(comp_models)
+
+
+
+```
+
+4. Measurement Invariance
+
+``` {r Measurement Invariance}
+
+stopifnot(is.factor(data$gender))
+
+stopifnot(all(levels(data$gender) %in% c("male","female")))
+items <- vviq_cols
+
+# Configural Model
+
+fit_configural <- cfa(model_within, 
+            data = data, 
+            group = "gender")
+
+# Metric Model 
+
+fit_metric <- cfa(model_within, 
+            data = data, 
+            group = "gender", group.equal = c("loadings"))
+
+# Scalar Model
+
+fit_scalar <- cfa(model_within, 
+            data = data, 
+            group = "gender", group.equal = c("loadings", "intercepts"))
+
+
+# comprehensive comparison
+comparison <- compareFit(fit_configural, fit_metric, fit_scalar)
+summary(comparison)
+
+
+
+```
+5. Reliability 
+   5.2. cronbach's alpha reliability
+   5.3. Omega Reliability
+
+``` {r Reliability}
+
+vviq_mat <- data |> select(all_of(vviq_cols))
+
+#--------------- Cronbach's alpha------------- 
+alpha_vviq  <- alpha(vviq_mat)
+
+
+# Omega using polychorics 
+poly_vviq   <- polychoric(vviq_mat)$rho
+omega_vviq  <- omega(vviq_mat, poly = TRUE)
+
+cat("Cronbach's alpha coefficient is: \n", alpha_vviq$total$raw_alpha)
+summary(alpha_vviq)
+
+cat("Omega coefficient is: \n",omega_vviq$omega.tot)
+summary(omega_vviq)
+```
+
+ 6. Convergent Validity
+
+```{r Convergent Validiy}
+
+# Pre-Correlation Assumption Checking
+
+# Normality tests for continuous variables
+normality_tests <- function(variable, var_name) {
+  shapiro <- shapiro.test(variable)
+  cat("Normality test for", var_name, ":\n")
+  cat("  Shapiro-Wilk W =", round(shapiro$statistic, 3), 
+      ", p =", format.pval(shapiro$p.value, digits = 3), "\n")
+  cat("  Interpretation:", ifelse(shapiro$p.value < 0.05, 
+                                  "NOT normally distributed", 
+                                  "Normally distributed"), "\n\n")
+}
+
+
+# Test normality for all key variables
+normality_tests(score_data$VVIQ_score, "VVIQ")
+normality_tests(score_data$VMIQ_score, "VMIQ")
+normality_tests(score_data$SUIS_score, "SUIS")
+
+
+# Outlier detection using Tukey's method
+detect_outliers <- function(variable, var_name) {
+  Q1 <- quantile(variable, 0.25, na.rm = TRUE)
+  Q3 <- quantile(variable, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  outliers <- variable < lower_bound | variable > upper_bound
+  n_outliers <- sum(outliers, na.rm = TRUE)
+  
+  cat("Outlier analysis for", var_name, ":\n")
+  cat("  Potential outliers:", n_outliers, 
+      "(", round(n_outliers/length(na.omit(variable)) * 100, 1), "%)\n")
+  cat("  Lower bound:", round(lower_bound, 2), "Upper bound:", round(upper_bound, 2), "\n\n")
+  
+  return(outliers)
+}
+
+# Check for outliers
+vviq_outliers <- detect_outliers(score_data$VVIQ_score, "VVIQ")
+vmiq_outliers <- detect_outliers(score_data$VMIQ_score, "VMIQ")
+suis_outliers <- detect_outliers(score_data$SUIS_score, "SUIS")
+gad_outliers <- detect_outliers(score_data$GAD_score, "GAD")
+
+
+# Homoscedasticity check
+check_homoscedasticity <- function(x, y, x_name, y_name) {
+  model <- lm(y ~ x)
+  plot(x, residuals(model), 
+       xlab = x_name, ylab = "Residuals",
+       main = paste("Residuals vs", x_name),
+       pch = 16, col = rgb(0.5, 0, 0.5, 0.6))
+  abline(h = 0, col = "red", lty = 2)
+  
+  # Breusch-Pagan test for heteroscedasticity
+  if (!require(lmtest)) install.packages("lmtest"); library(lmtest)
+  bp_test <- bptest(model)
+  cat("Breusch-Pagan test for", x_name, "vs", y_name, ":\n")
+  cat("  BP =", round(bp_test$statistic, 3), 
+      ", p =", format.pval(bp_test$p.value, digits = 3), "\n")
+  cat("  Interpretation:", ifelse(bp_test$p.value < 0.05, 
+                                  "Heteroscedasticity detected", 
+                                  "Homoscedasticity assumed"), "\n\n")
+}
+
+# Check homoscedasticity for main convergent relationships
+check_homoscedasticity(score_data$VVIQ_score, score_data$VMIQ_score, "VVIQ", "VMIQ")
+
+check_homoscedasticity(score_data$VVIQ_score, score_data$SUIS_score, "VVIQ", "SUIS")
+
+# ======================================
+# Correlation Method Decision
+# ======================================
+
+decide_correlation_method <- function() {
+  # Check normality (using Shapiro-Wilk results)
+  shapiro_vviq <- shapiro.test(score_data$VVIQ_score)$p.value < 0.05
+  shapiro_vmiq <- shapiro.test(score_data$VMIQ_score)$p.value < 0.05
+  shapiro_suis <- shapiro.test(score_data$SUIS_score)$p.value < 0.05
+  
+  non_normal_count <- sum(c(shapiro_vviq, shapiro_vmiq, shapiro_suis))
+  
+  cat("Correlation Method Decision:\n")
+  cat("Number of variables violating normality:", non_normal_count, "/ 3\n")
+  
+  if (non_normal_count >= 1) {
+    cat("RECOMMENDATION: Use Spearman correlation (non-parametric)\n")
+    return("spearman")
+  } else {
+    cat("RECOMMENDATION: Use Pearson correlation (parametric)\n")
+    return("pearson")
+  }
+}
+
+# Determine appropriate correlation method
+cor_method <- decide_correlation_method()
+cat("\nUsing", cor_method, "correlation for validity analyses\n")
+
+
+# ======================================
+# 6. Convergent Validity
+# ======================================
+
+
+convergent_cor <- corr.test(score_data$VVIQ_score, 
+                            score_data[, c("VMIQ_External","VMIQ_Internal","VMIQ_Kinesthetic","VMIQ_score", "SUIS_score")],
+                            method = cor_method,  # Use the determined method
+                            adjust = "bonferroni")
+
+# ======================================
+# 7. Reporting Convergent Validity
+# ======================================
+
+# Create a clean, minimal theme
+
+clean_theme <- theme_classic() +
+  theme(
+    plot.title            = element_text(hjust = 0, face = "bold", size = 11),
+    panel.grid.minor      = element_blank(),
+    legend.position       = "none",
+    strip.background      = element_blank(),
+    panel.spacing         = unit(15, "pt"),
+    plot.title.position   = "plot",
+    plot.margin           = margin(6, 8, 6, 8),
+  )
+
+cor_test <- cor.test(score_data$VVIQ_score, score_data$VMIQ_Kinesthetic)
+correlation <- cor_test$estimate
+p_value <- cor_test$p.value
+
+# Create significance stars
+signif_stars <- symnum(p_value, corr = FALSE, na = FALSE,
+                       cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+                       symbols = c("***", "**", "*", ".", " "))
+
+
+corr_colors <- c(
+  "VMIQ Total"       = "#288C17",  
+  "SUIS"             = "#401DB4",  
+  "VMIQ Internal"    = "#6C7A57",  
+  "VMIQ External"    = "#A3B090",  
+  "VMIQ Kinesthetic" = "#3D4531"   
+)
+
+
+plot_vmiq_total <- ggplot(score_data, aes(x = VVIQ_score, y = VMIQ_score)) +
+  geom_point(alpha = 0.7, color = corr_colors["VMIQ Total"], size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE, alpha = 0.2) +
+  labs(
+    title = "(A)",
+    x = "VVIQ",
+    y = "VMIQ (Total)"
+  ) +
+  clean_theme+
+  theme(
+    plot.subtitle = element_text(size = 10),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+plot_suis <- ggplot(score_data, aes(x = VVIQ_score, y = SUIS_score)) +
+  geom_point(alpha = 0.7, color = corr_colors["SUIS"], size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE, alpha = 0.2) +
+  labs(
+    title = "(B)",
+    x = "VVIQ",
+    y = "SUIS"
+  ) +
+  clean_theme+
+  theme(
+    plot.subtitle = element_text(size = 10),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )
+
+plot_vmiq_internal <- ggplot(score_data, aes(x = VVIQ_score, y = VMIQ_Internal)) +
+  geom_point(alpha = 0.7, color = corr_colors["VMIQ Internal"], size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE, alpha = 0.2) +
+  labs(
+    title = "(D)",
+    x = "VVIQ",
+    y = "VMIQ (Internal)"
+  ) +
+  clean_theme+
+  theme(
+    plot.subtitle = element_text(size = 10),
+    axis.title.x = element_text(face = "plain"),
+    axis.title.y = element_text(face = "plain",size = 8.8),
+    aspect.ratio = 0.95
+  )
+
+plot_vmiq_external <- ggplot(score_data, aes(x = VVIQ_score, y = VMIQ_External)) +
+  geom_point(alpha = 0.7, color = corr_colors["VMIQ External"], size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE, alpha = 0.2) +
+  labs(
+    title = "(C)",
+    x = "VVIQ",
+    y = "VMIQ (External)"
+  ) +
+  clean_theme+
+  theme(
+    plot.subtitle = element_text(size = 10),
+    axis.title.x = element_text(face = "plain"),
+    axis.title.y = element_text(face = "plain",size = 8.8),
+    aspect.ratio = 0.95
+  )
+
+plot_vmiq_kinesthetic <- ggplot(score_data, aes(x = VVIQ_score, y = VMIQ_Kinesthetic)) +
+  geom_point(alpha = 0.7, color = corr_colors["VMIQ Kinesthetic"], size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE, alpha = 0.2) +
+  labs(
+    title = "(E)",
+    x = "VVIQ",
+    y = "VMIQ (Kinesthetic)"
+  ) +
+  clean_theme +
+  theme(
+    plot.subtitle = element_text(size = 10),
+    axis.title.x = element_text(face = "plain"),
+    axis.title.y = element_text(face = "plain", size = 8.8),
+    aspect.ratio = 0.95
+  )
+
+
+# Calculate correlations for ALL plots at once
+correlations <- list(
+  total = cor.test(score_data$VVIQ_score, score_data$VMIQ_score, method = 'spearman'),
+  suis = cor.test(score_data$VVIQ_score, score_data$SUIS_score,method = 'spearman'),
+  external = cor.test(score_data$VVIQ_score, score_data$VMIQ_External,method = 'spearman'),
+  internal = cor.test(score_data$VVIQ_score, score_data$VMIQ_Internal,method = 'spearman'),
+  kinesthetic = cor.test(score_data$VVIQ_score, score_data$VMIQ_Kinesthetic,method = 'spearman')
+)
+# Function to add correlation annotation
+add_correlation <- function(cor_test) {
+  signif_stars <- symnum(cor_test$p.value, corr = FALSE, na = FALSE,
+                         cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+                         symbols = c("***", "**", "*", ".", " "))
+  bquote(italic(ρ)~"="~.(round(cor_test$estimate, 2))~.(signif_stars))
+}
+
+# Update all plots with consistent correlation display
+plot_vmiq_total <- plot_vmiq_total + 
+  labs(subtitle = add_correlation(correlations$total))
+
+plot_suis <- plot_suis + 
+  labs(subtitle = add_correlation(correlations$suis))
+
+plot_vmiq_external <- plot_vmiq_external + 
+  labs(subtitle = add_correlation(correlations$external))
+
+plot_vmiq_internal <- plot_vmiq_internal + 
+  labs(subtitle = add_correlation(correlations$internal))
+
+# Kinesthetic already has correlation, ensure consistency
+plot_vmiq_kinesthetic <- plot_vmiq_kinesthetic + 
+  labs(subtitle = add_correlation(correlations$kinesthetic))
+
+# Fix layout order to match creation order
+(plot_vmiq_total | plot_suis) /
+  (plot_vmiq_external | plot_vmiq_internal | plot_vmiq_kinesthetic)
+```
+
+ 7. Discriminant Validity
+ 
+```{r Discriminant}
+# ======================================
+# 7. Divergent Validity
+# ======================================
+
+# Pre-Correlation Assumption Checking for Divergent Variables
+cat("DIVERGENT VALIDITY ASSUMPTION CHECKING\n")
+cat("=======================================\n")
+
+# Normality tests for divergent variables
+normality_tests(score_data$GAD_score, "GAD")
+normality_tests(score_data$TIPI_Extraversion, "Extraversion")
+normality_tests(score_data$TIPI_Agreeableness, "Agreeableness")
+normality_tests(score_data$TIPI_Conscientiousness, "Conscientiousness")
+normality_tests(score_data$TIPI_EmotionalStability, "Emotional Stability")
+normality_tests(score_data$TIPI_Openness, "Openness")
+
+# Outlier detection for divergent variables
+gad_outliers <- detect_outliers(score_data$GAD_score, "GAD")
+extra_outliers <- detect_outliers(score_data$TIPI_Extraversion, "Extraversion")
+agree_outliers <- detect_outliers(score_data$TIPI_Agreeableness, "Agreeableness")
+conscientious_outliers <- detect_outliers(score_data$TIPI_Conscientiousness, "Conscientiousness")
+emotional_outliers <- detect_outliers(score_data$TIPI_EmotionalStability, "Emotional Stability")
+openness_outliers <- detect_outliers(score_data$TIPI_Openness, "Openness")
+
+# Check homoscedasticity for main divergent relationships
+check_homoscedasticity(score_data$VVIQ_score, score_data$GAD_score, "VVIQ", "GAD")
+
+# ======================================
+# Divergent Validity Analysis
+# ======================================
+
+divergent_cor <- corr.test(score_data$VVIQ_score,
+                           score_data[, c("GAD_score", 
+                                          "TIPI_Extraversion", 
+                                          "TIPI_Agreeableness",
+                                          "TIPI_Conscientiousness",
+                                          "TIPI_EmotionalStability",
+                                          "TIPI_Openness")],
+                           method = cor_method,
+                           adjust = "bonferroni")
+cat("\nDIVERGENT VALIDITY CORRELATIONS:\n")
+cat("================================\n")
+print(divergent_cor$r)
+cat("\nADJUSTED P-VALUES:\n")
+print(divergent_cor$p.adj)
+
+# ======================================
+# 8. Reporting Divergent Validity
+# ======================================
+
+# Function to format divergent validity results in APA style
+report_divergent_validity <- function(cor_results, method_used) {
+  
+  cat("\n")
+  cat("DIVERGENT VALIDITY RESULTS - APA FORMAT REPORT\n")
+  cat("==============================================\n\n")
+  
+  # Extract correlation details
+  gad_r <- cor_results$r[1, 1]
+  gad_p <- cor_results$p[1, 1]
+  gad_p_adj <- cor_results$p.adj[1, 1]
+  
+  extra_r <- cor_results$r[1, 2]
+  extra_p <- cor_results$p[1, 2]
+  extra_p_adj <- cor_results$p.adj[1, 2]
+  
+  agree_r <- cor_results$r[1, 3]
+  agree_p <- cor_results$p[1, 3]
+  agree_p_adj <- cor_results$p.adj[1, 3]
+  
+  conscientious_r <- cor_results$r[1, 4]
+  conscientious_p <- cor_results$p[1, 4]
+  conscientious_p_adj <- cor_results$p.adj[1, 4]
+  
+  emotional_r <- cor_results$r[1, 5]
+  emotional_p <- cor_results$p[1, 5]
+  emotional_p_adj <- cor_results$p.adj[1, 5]
+  
+  openness_r <- cor_results$r[1, 6]
+  openness_p <- cor_results$p[1, 6]
+  openness_p_adj <- cor_results$p.adj[1, 6]
+  
+  sample_size <- cor_results$n
+  
+  # Determine significance symbols
+  sig_symbol <- function(p) {
+    ifelse(p < 0.001, "***",
+           ifelse(p < 0.01, "**",
+                  ifelse(p < 0.05, "*", "")))
+  }
+  
+  cat("Divergent validity was assessed by examining the relationships between\n")
+  cat("the VVIQ and measures of theoretically unrelated constructs: anxiety\n")
+  cat("(GAD-7) and the Big Five personality traits (TIPI).", method_used, "\n")
+  cat("correlation was used consistent with the convergent validity analysis.\n\n")
+  
+  cat("RESULTS:\n")
+  cat("--------\n")
+  cat(sprintf("1. VVIQ and GAD-7 (Anxiety): r = %.3f%s, p = %.3f\n", 
+              gad_r, sig_symbol(gad_p), gad_p))
+  if(gad_p_adj != gad_p) {
+    cat(sprintf("   (Bonferroni-adjusted p = %.3f)\n", gad_p_adj))
+  }
+  
+  cat(sprintf("2. VVIQ and Extraversion: r = %.3f%s, p = %.3f\n", 
+              extra_r, sig_symbol(extra_p), extra_p))
+  cat(sprintf("3. VVIQ and Agreeableness: r = %.3f%s, p = %.3f\n", 
+              agree_r, sig_symbol(agree_p), agree_p))
+  cat(sprintf("4. VVIQ and Conscientiousness: r = %.3f%s, p = %.3f\n", 
+              conscientious_r, sig_symbol(conscientious_p), conscientious_p))
+  cat(sprintf("5. VVIQ and Emotional Stability: r = %.3f%s, p = %.3f\n", 
+              emotional_r, sig_symbol(emotional_p), emotional_p))
+  cat(sprintf("6. VVIQ and Openness: r = %.3f%s, p = %.3f\n", 
+              openness_r, sig_symbol(openness_p), openness_p))
+  
+  cat(sprintf("Sample size: N = %d\n\n", sample_size))
+  
+  # Interpretation
+  cat("INTERPRETATION:\n")
+  cat("---------------\n")
+  
+  # Count significant and non-significant correlations
+  p_values <- c(gad_p, extra_p, agree_p, conscientious_p, emotional_p, openness_p)
+  significant <- sum(p_values < 0.05)
+  non_significant <- sum(p_values >= 0.05)
+  
+  cat(sprintf("Of the %d correlations tested, %d were statistically significant\n", 
+              length(p_values), significant))
+  cat(sprintf("and %d were non-significant.\n", non_significant))
+  
+  # Ideal pattern for divergent validity
+  ideal_pattern <- sum(abs(c(gad_r, extra_r, agree_r, conscientious_r, emotional_r, openness_r)) < 0.3)
+  
+  if(ideal_pattern >= 4 && significant <= 2) {
+    cat("This pattern provides strong evidence for divergent validity, as most\n")
+    cat("correlations with theoretically unrelated constructs were weak and\n")
+    cat("non-significant.\n")
+  } else if(ideal_pattern >= 3 && significant <= 3) {
+    cat("This pattern provides adequate evidence for divergent validity, though\n")
+    cat("some unexpected relationships were observed.\n")
+  } else {
+    cat("This pattern raises concerns about divergent validity, as several\n")
+    cat("correlations with theoretically unrelated constructs were substantial\n")
+    cat("and/or statistically significant.\n")
+  }
+  
+  # Specific interpretation for each measure
+  cat("\nDETAILED INTERPRETATION:\n")
+  cat("------------------------\n")
+  
+  interpret_divergent <- function(r, p, measure, theory) {
+    strength <- ifelse(abs(r) > 0.3, "substantial",
+                       ifelse(abs(r) > 0.2, "moderate",
+                              ifelse(abs(r) > 0.1, "weak", "negligible")))
+    
+    cat(sprintf("- %s: The %s correlation (r = %.3f) is %s with theoretical\n",
+                measure, strength, r, 
+                ifelse(p < 0.05, "statistically significant", "non-significant")))
+    cat(sprintf("  expectations. %s\n", theory))
+  }
+  
+  interpret_divergent(gad_r, gad_p, "GAD-7 (Anxiety)", 
+                      "Theory suggests mental imagery vividness should be largely independent of anxiety levels.")
+  
+  interpret_divergent(extra_r, extra_p, "Extraversion",
+                      "No strong theoretical reason exists for imagery vividness to correlate with extraversion.")
+  
+  interpret_divergent(agree_r, agree_p, "Agreeableness",
+                      "Imagery vividness is not theoretically linked to interpersonal agreeableness.")
+  
+  interpret_divergent(conscientious_r, conscientious_p, "Conscientiousness",
+                      "There is no established theoretical relationship between imagery and conscientiousness.")
+  
+  interpret_divergent(emotional_r, emotional_p, "Emotional Stability",
+                      "While some emotional components might influence imagery, strong correlations would be unexpected.")
+  
+  interpret_divergent(openness_r, openness_p, "Openness",
+                      "Openness to experience might show some relationship with imagery, but strong correlations would suggest overlap.")
+  
+  # Create a results table for publication
+  cat("\nTABLE: Divergent Validity Correlations\n")
+  cat("--------------------------------------\n")
+  cat("Measure               r      p-value   Interpretation\n")
+  cat("------------------  -----   -------   --------------\n")
+  cat(sprintf("GAD-7 (Anxiety)    % .3f%s   %.3f      %s\n",
+              gad_r, sig_symbol(gad_p), gad_p,
+              ifelse(abs(gad_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(gad_r) < 0.3, "Adequate", "Questionable"))))
+  
+  cat(sprintf("Extraversion       % .3f%s   %.3f      %s\n",
+              extra_r, sig_symbol(extra_p), extra_p,
+              ifelse(abs(extra_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(extra_r) < 0.3, "Adequate", "Questionable"))))
+  
+  cat(sprintf("Agreeableness      % .3f%s   %.3f      %s\n",
+              agree_r, sig_symbol(agree_p), agree_p,
+              ifelse(abs(agree_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(agree_r) < 0.3, "Adequate", "Questionable"))))
+  
+  cat(sprintf("Conscientiousness  % .3f%s   %.3f      %s\n",
+              conscientious_r, sig_symbol(conscientious_p), conscientious_p,
+              ifelse(abs(conscientious_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(conscientious_r) < 0.3, "Adequate", "Questionable"))))
+  
+  cat(sprintf("Emotional Stability% .3f%s   %.3f      %s\n",
+              emotional_r, sig_symbol(emotional_p), emotional_p,
+              ifelse(abs(emotional_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(emotional_r) < 0.3, "Adequate", "Questionable"))))
+  
+  cat(sprintf("Openness           % .3f%s   %.3f      %s\n",
+              openness_r, sig_symbol(openness_p), openness_p,
+              ifelse(abs(openness_r) < 0.2, "Good divergent validity",
+                     ifelse(abs(openness_r) < 0.3, "Adequate", "Questionable"))))
+}
+
+# Generate the divergent validity report
+report_divergent_validity(divergent_cor, cor_method)
+
+# ======================================
+# Visualization for Divergent Validity
+# ======================================
+
+cat("\n\nVISUAL REPRESENTATION OF DIVERGENT VALIDITY:\n")
+cat("============================================\n")
+
+# Create a correlation plot for all validity measures
+all_validity_vars <- score_data[, c("VVIQ_score", "VMIQ_score", "SUIS_score", 
+                                    "GAD_score", "TIPI_Extraversion", "TIPI_Agreeableness",
+                                    "TIPI_Conscientiousness", "TIPI_EmotionalStability", 
+                                    "TIPI_Openness")]
+
+# Correlation matrix
+validity_cor_matrix <- cor(all_validity_vars, use = "complete.obs", method = cor_method)
+
+# Plot correlation matrix
+corrplot(validity_cor_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 45,
+         title = "Correlation Matrix: VVIQ and Validity Measures",
+         mar = c(0, 0, 2, 0))
+
+ # Highlight VVIQ correlations
+vviq_correlations <- validity_cor_matrix["VVIQ_score", ]
+cat("\nVVIQ Correlations with All Measures:\n")
+print(round(vviq_correlations, 3))
+
+# Save results for manuscript
+divergent_results <- data.frame(
+  Measure = c("GAD_Anxiety", "Extraversion", "Agreeableness", 
+              "Conscientiousness", "Emotional_Stability", "Openness"),
+  Correlation = divergent_cor$r[1, ],
+  p_value = divergent_cor$p[1, ],
+  p_adjusted = divergent_cor$p.adj[1, ],
+  Sample_Size = divergent_cor$n,
+  Interpretation = ifelse(abs(divergent_cor$r[1, ]) < 0.2, "Excellent divergent",
+                          ifelse(abs(divergent_cor$r[1, ]) < 0.3, "Adequate divergent", 
+                                 "Questionable divergent"))
+)
+
+cat("\nDivergent validity results saved in 'divergent_results' data frame.\n")
+print(divergent_results)
+
+
+# HTMT Ratio for Discriminant validity
+
+# 1) Define  column names 
+vviq_cols <- paste0("vviq", 1:32)  
+gad_cols <- paste0("gad", 1:7)       
+tipi_cols <- paste0("tipi", 1:10)  
+
+# 2) Process TIPI columns
+tipi_num <- as.integer(gsub("\\D", "", tipi_cols))
+tipi_cols <- tipi_cols[order(tipi_num)]
+names(tipi_cols) <- paste0("tipi", 1:10)
+
+# 3) Define TIPI pairs 
+EX_items <- c("tipi1", "tipi6")
+AG_items <- c("tipi2", "tipi7") 
+CO_items <- c("tipi3", "tipi8")
+ES_items <- c("tipi4", "tipi9")
+OP_items <- c("tipi5", "tipi10")
+
+neg <- function(x) paste0("(-1)*", x)
+
+# 4) Build model
+model_htmt <- paste0(
+  "VVIQ =~ ", paste(vviq_cols, collapse = " + "), "\n",
+  "GAD  =~ ", paste(gad_cols,  collapse = " + "), "\n",
+  "EX =~ ", paste(c(EX_items[1], neg(EX_items[2])), collapse = " + "), "\n",
+  "AG =~ ", paste(c(neg(AG_items[1]), AG_items[2]), collapse = " + "), "\n",
+  "CO =~ ", paste(c(CO_items[1], neg(CO_items[2])), collapse = " + "), "\n",
+  "ES =~ ", paste(c(neg(ES_items[1]), ES_items[2]), collapse = " + "), "\n",
+  "OP =~ ", paste(c(OP_items[1], neg(OP_items[2])), collapse = " + "), "\n"
+)
+
+cat(model_htmt)
+
+all_items <- c(vviq_cols, gad_cols, tipi_cols)
+
+cat(all_items)
+
+# 6) Calculate HTMT
+H <- htmt(model_htmt, data = data)
+# HTMT Presentation
+H
+
+ 
+```
+ 
+ 8. Gender Diffreneces
+```{r gender differences}
+
+
+
+
+```
+ 
+ 9. Age-related Diffreneces
+ 
+``` {r age differences}
+
+
+# VVIQ analysis by age
+df <- score_data %>%
+  filter(!is.na(age), !is.na(VVIQ_score)) %>%
+  mutate(age_c = age - mean(age),  # center age
+         age_c2 = age_c^2)         # quadratic term
+
+# Fit models
+m_lin  <- lm(VVIQ_score ~ age_c, data = df)
+m_quad <- lm(VVIQ_score ~ age_c + age_c2, data = df)
+m_gam  <- gam(VVIQ_score ~ s(age), data = df)  # simplified GAM
+
+# Compare models (lower AIC = better)
+# Compare models using AIC (lower = better)
+aic_comparison <- AIC(m_lin, m_quad, m_gam)
+aic_comparison[order(aic_comparison$AIC), ]
+
+# Check best model
+summary(m_gam)
+
+# Visualize the relationship
+ggplot(df, aes(age, VVIQ_score)) +
+  geom_point(alpha = .25) +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 4), se = TRUE) +
+  theme_bw()+
+  labs(title = "VVIQ Across Ages",subtitle = "(Age treated as a continuous variable)", x = "Age", y = "VVIQ")
+
+# Age as a discrete variable
+
+df <- df %>%
+  mutate(age_group = case_when(
+    age <= 18 ~ "Adolescents",
+    age <= 25 ~ "YoungAdults",
+    age <= 40 ~ "Adults",
+    TRUE      ~ "OlderAdults"
+  )) %>% 
+  mutate(age_group = factor(age_group, 
+                            levels = c("Adolescents","YoungAdults","Adults","OlderAdults")))
+
+# Check variance equality (often violated with unequal sizes)
+leveneTest(VVIQ_score ~ age_group, data = df)
+
+# Welch ANOVA (robust to unequal variances/sizes) – recommended
+welch <- oneway.test(VVIQ_score ~ age_group, data = df, var.equal = FALSE)
+welch
+
+# Effect size (approx with classical ANOVA object)
+aov_eq <- aov(VVIQ_score ~ age_group, data = df)
+eta_squared(aov_eq, partial = FALSE)
+
+# Post-hoc (Tukey is fine if variances ~equal; else Games-Howell)
+# Tukey with emmeans:
+emm <- emmeans(aov_eq, ~ age_group)
+pairs(emm, adjust = "tukey")
+
+# (Optional) Games-Howell via userfriendlyscience::oneway if variances unequal
+# library(userfriendlyscience)
+# oneway(as.factor(age_group), y = df$VVIQ_score, posthoc = 'games-howell')
+
+
+
+df %>%
+  group_by(age_group) %>%
+  summarise(N=n(), Mean=mean(VVIQ_score), SD=sd(VVIQ_score),
+            Median=median(VVIQ_score), .groups="drop")
+
+
+ggplot(df, aes(age_group, VVIQ_score, fill = age_group)) +
+  geom_boxplot(alpha=.7, outlier.shape = NA, width = 0.45) +
+  geom_jitter(width=0.2, alpha=0.6, size= 0.8) +
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 4,color = "#FF5C5C",show.legend = F) +
+  labs(title = element_blank(), x = "Age group", y = "VVIQ") +
+  scale_fill_viridis(option = "D", discrete = T)+
+  theme_classic() + theme(legend.position="none", aspect.ratio = 0.8,
+                          axis.title.x = element_text(face = "bold"),
+                          axis.title.y = element_text(face = "bold"))
+
+###
+
+```
+
+
+
